@@ -161,6 +161,17 @@ path: |
   dist/app-linux.tar.gz
 ```
 
+也可以上传子目录里的文件：
+
+```yaml
+path: |
+  releases/app-windows.zip
+  releases/app-macos.zip
+  checksums-sha256.txt
+```
+
+公用模板会递归读取 artifact 里的所有文件，所以 `releases/` 这类子目录里的附件也会一起上传到 GitHub Release。
+
 ## 发版流程
 
 业务仓库接入后，正常发版只需要这样做：
@@ -253,6 +264,14 @@ permissions:
 
 通常不需要自己配置 GitHub token。默认使用 GitHub Actions 提供的 `GITHUB_TOKEN` 即可。
 
+公用模板内部已经设置：
+
+```yaml
+GH_REPO: ${{ github.repository }}
+```
+
+这样即使发布 job 没有 checkout 代码，`gh release ...` 也能明确知道要发布到当前业务仓库。
+
 ## 安全规范
 
 请遵守这些规则：
@@ -276,6 +295,8 @@ permissions:
 可以。
 
 在业务仓库的 `Upload release assets` 里写多个路径即可。
+
+如果附件在子目录中，也可以正常上传。模板会递归收集 artifact 内的文件。
 
 ### 如果 Release 已经存在会怎样？
 
@@ -302,3 +323,28 @@ v2
 - 业务仓库 Actions 权限
 - 模板仓库 Actions 权限
 - Organization 或账号级别的 Actions policy
+
+### 发布 job 提示找不到目标仓库怎么办？
+
+当前 `v1` 模板已经设置 `GH_REPO`，正常不会出现这个问题。
+
+如果业务仓库仍然失败，请确认它引用的是：
+
+```yaml
+uses: rockyliang10/CI/.github/workflows/reusable-release-assets.yml@v1
+```
+
+不要引用旧提交。
+
+### 为什么 Release 里只看到 checksums 文件，没有 zip？
+
+通常是因为旧模板只扫描 artifact 根目录文件。
+
+当前 `v1` 模板已经改为递归扫描 artifact，所以类似下面的结构可以正常发布：
+
+```text
+release-assets/
+  checksums-sha256.txt
+  releases/
+    app-windows.zip
+```
