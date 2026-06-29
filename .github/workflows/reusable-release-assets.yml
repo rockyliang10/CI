@@ -1,0 +1,89 @@
+name: Reusable Release Assets
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Existing v* tag to publish"
+        required: true
+        type: string
+      artifact-name:
+        description: "Uploaded artifact that contains the release assets"
+        required: false
+        type: string
+        default: release-assets
+      release-title:
+        description: "Release title. Defaults to the tag."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      release_token:
+        required: false
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish uploaded assets
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.release_token || github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      ARTIFACT_NAME: ${{ inputs.artifact-name }}
+      RELEASE_TITLE: ${{ inputs.release-title }}
+
+    steps:
+      - name: Validate tag
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[[:alnum:]_.-]+$ ]]; then
+            echo "Release tag must start with v and contain only letters, digits, dots, underscores, or hyphens: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          if [[ -z "$RELEASE_TITLE" ]]; then
+            echo "RELEASE_TITLE=$RELEASE_TAG" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: release-assets
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
+
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "No files found in artifact: $ARTIFACT_NAME" >&2
+            exit 1
+          fi
+
+          {
+            echo "# $RELEASE_TITLE"
+            echo
+            echo "SHA256:"
+            echo
+            for asset in "${assets[@]}"; do
+              hash="$(sha256sum "$asset" | awk '{print $1}')"
+              name="$(basename "$asset")"
+              echo "- $name: \`$hash\`"
+            done
+          } > release-notes.md
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TITLE" --notes-file release-notes.md --verify-tag
+          fi

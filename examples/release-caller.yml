@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to publish"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    name: Build release assets
+    runs-on: windows-latest
+    outputs:
+      release-tag: ${{ steps.release-tag.outputs.value }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select release tag
+        id: release-tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ inputs.tag }}"
+          } else {
+            $tag = "${env:GITHUB_REF_NAME}"
+          }
+
+          if ($tag -notmatch '^v[\w.-]+$') {
+            throw "Release tag must start with v and contain only letters, digits, dots, underscores, or hyphens: $tag"
+          }
+
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            git fetch --tags --force
+            git checkout "refs/tags/$tag"
+          }
+
+          "value=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build packages
+        shell: pwsh
+        run: |
+          # Replace this command with the current repository's own build command.
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: |
+            downloads/your-project.zip
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    uses: rockyliang10/CI/.github/workflows/reusable-release-assets.yml@v1
+    with:
+      tag: ${{ needs.build.outputs.release-tag }}
+      artifact-name: release-assets
