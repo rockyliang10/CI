@@ -58,7 +58,7 @@ jobs:
       - name: Write release notes
         shell: bash
         run: |
-          mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
+          mapfile -t assets < <(find release-assets -type f | sort)
 
           if [[ "${#assets[@]}" -eq 0 ]]; then
             echo "No files found in artifact: $ARTIFACT_NAME" >&2
@@ -80,7 +80,7 @@ jobs:
       - name: Publish GitHub Release
         shell: bash
         run: |
-          mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
+          mapfile -t assets < <(find release-assets -type f | sort)
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md
